@@ -34,7 +34,8 @@ def main(train_dataset, test_dataset, train_encoder, num_epochs, ckpt=None) -> N
         optimizer = optim.Adam(list(encoder.parameters()) + list(model.parameters()), lr=0.001)
     else:
         optimizer = optim.Adam(model.parameters(), lr=0.001)
-    
+
+    n_labels = 7
     model = get_model(model_name, embed_dim, n_labels, device)
     if ckpt:
         checkpoint = torch.load(ckpt)
