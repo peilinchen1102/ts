@@ -53,6 +53,7 @@ class Ga(data.Dataset):
     def __init__(
         self,
         base_root: str,
+        fixed: bool,
         window_size: int,
         overlap: int,
         download: bool = False,
@@ -70,6 +71,7 @@ class Ga(data.Dataset):
         self.window_size = window_size
         self.overlap = overlap
         self.data = []
+        self.fixed = fixed
         if download:
             self.download_dataset()
 
@@ -139,8 +141,8 @@ class Ga(data.Dataset):
     def __getitem__(self, index):
 
         measurements, label = self.load_measurements(index)
-        measurements = preprocess(measurements, self.window_size, self.overlap)
-        return (index, measurements, label)
+        measurements = preprocess(measurements, self.fixed, self.window_size, self.overlap)
+        return (measurements, label)
 
     def __len__(self):
         return self.subject_data.shape[0]

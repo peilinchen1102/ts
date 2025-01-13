@@ -10,6 +10,9 @@ from scipy.io import loadmat
 from scipy.signal import decimate, resample
 from torchvision.datasets.utils import download_and_extract_archive
 from src.preprocess import preprocess
+import time
+from joblib import Parallel, delayed
+
 
 class Input1dSpec(object):
     '''Defines the specs for 1d inputs.'''
@@ -70,6 +73,7 @@ class CPSC(data.Dataset):
         self.window_size = window_size
         self.overlap = overlap
         self.data = []
+        self.cached_data = []
         if download:
             self.download_dataset()
 
@@ -77,6 +81,7 @@ class CPSC(data.Dataset):
             raise RuntimeError('Dataset not found. You can use download=True to download it')
 
         self.subject_data = self.load_data()
+        self._cache_preprocessed_data()
 
     def _is_downloaded(self):
         print(self.root)
@@ -107,6 +112,9 @@ class CPSC(data.Dataset):
         for i in tqdm.tqdm(range(df.shape[0])):
             id = df.iloc[i]["patient"]
             file_name = self.root + '/' + id
+            if not os.path.exists(file_name+".mat"):
+                print(f"File not found: {file_name}")
+                continue
             recording = CPSC._process_recording(file_name)
             _, L = recording.shape
             if L != 5000:
@@ -130,6 +138,15 @@ class CPSC(data.Dataset):
 
         return df
 
+    def _cache_preprocessed_data(self):
+        def process_data(i):
+            recording, label = self.load_measurements(i)
+            preprocessed_recording = preprocess(recording, self.window_size, self.overlap)
+            return preprocessed_recording, label
+
+        self.cached_data = Parallel(n_jobs=-1)(delayed(process_data)(i) for i in tqdm.tqdm(range(len(self.subject_data))))
+
+
     def load_measurements(self, index):
         i = index
         recording = CPSC._read_recording(self.root, self.subject_data.iloc[i]["patient"], self.REC_DIMS)
@@ -137,9 +154,10 @@ class CPSC(data.Dataset):
         return recording, label
 
     def __getitem__(self, index):
-        measurements, label = self.load_measurements(index)
-        measurements = preprocess(measurements, self.window_size, self.overlap)
-        return (index, measurements, label)
+        # measurements, label = self.load_measurements(index)
+        # measurements = preprocess(measurements, self.window_size, self.overlap)
+        # return (index, measurements, label)
+        return tuple(self.cached_data[index])
 
     def __len__(self):
         return self.subject_data.shape[0]
@@ -159,6 +177,7 @@ class CPSC(data.Dataset):
 
     @staticmethod
     def _read_recording(path: str, id: str, rdim: Tuple):
+        start_time = time.time()
         file_name = path + '/' + id
         _, rL = rdim
         recording = CPSC._process_recording(file_name)
@@ -168,17 +187,22 @@ class CPSC(data.Dataset):
 
     @staticmethod
     def _process_recording(file_name: str):
-        recording = loadmat(f"{file_name}.mat")['val'].astype(float)
+        start_time = time.time()
+        recording = loadmat(file_name + '.mat')['val'].astype(float)
 
-        # Standardize sampling rate, sampling rate across different datasets here are already normalized by data provider Physionet, but we added this logic in case users want to use their own new datasets
+        start_time = time.time()
         sampling_rate = CPSC._get_sampling_rate(file_name)
 
+        start_time = time.time()
         if sampling_rate > CPSC.REC_FREQ:
             recording = np.copy(decimate(recording, int(sampling_rate / CPSC.REC_FREQ)))
         elif sampling_rate < CPSC.REC_FREQ:
             recording = np.copy(resample(recording, int(recording.shape[-1] * (CPSC.REC_FREQ / sampling_rate)), axis=1))
 
-        return torch.from_numpy(CPSC._normalize(recording))
+        start_time = time.time()
+        normalized = CPSC._normalize(recording)
+
+        return torch.from_numpy(normalized)
 
     @staticmethod
     def _normalize(x: np.ndarray):

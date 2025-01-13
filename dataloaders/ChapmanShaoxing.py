@@ -53,6 +53,7 @@ class ChapmanShaoxing(data.Dataset):
     def __init__(
         self,
         base_root: str,
+        fixed: bool,
         window_size: int,
         overlap: int,
         download: bool = False,
@@ -70,6 +71,7 @@ class ChapmanShaoxing(data.Dataset):
         self.window_size = window_size
         self.overlap = overlap
         self.data = []
+        self.fixed = fixed
         if download:
             self.download_dataset()
 
@@ -114,7 +116,7 @@ class ChapmanShaoxing(data.Dataset):
                 drop_list.append(i)
             else:
                 recording = ChapmanShaoxing._read_recording(self.root, self.subject_data.iloc[i]["patient"], self.REC_DIMS)
-                recording = preprocess(recording, self.window_size, self.overlap)
+                recording = preprocess(recording, self.fixed, self.window_size, self.overlap)
                 label = df.iloc[i]['label']
                 self.data.append((recording, label))
         df = df.drop(drop_list, axis=0)
@@ -148,7 +150,7 @@ class ChapmanShaoxing(data.Dataset):
         # print("Shape before preprocessing", measurements.shape)
         measurements = preprocess(measurements, self.window_size, self.overlap)
         # print("Shape after preprocessing", measurements.shape)
-        return (index, measurements, label)
+        return (measurements, label)
 
     def __len__(self):
         return self.subject_data.shape[0]

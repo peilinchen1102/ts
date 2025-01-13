@@ -1,6 +1,30 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from ECG_JEPA.linear_probe_utils import features_dataloader, LinearClassifier
+from ECG_JEPA.models import load_encoder
+
+def get_model(model_name: str, input_dim: int, n_labels: int, device):
+    if model_name == 'transformer':
+        model = TimeSeriesTransformer(
+            input_dim=input_dim,
+            d_model=64,
+            num_heads=8,
+            num_layers=6,
+            dim_feedforward=256,
+            dropout=0.1,
+            num_classes=n_labels
+        )
+
+    elif model_name == 'ecg-jepa':
+        model = LinearClassifier(input_dim, n_labels)
+
+    else:
+        raise ValueError(f"Unknown model name: {model_name}")
+    
+    model.to(device)
+    return model
+
 
 class TimeSeriesTransformer(nn.Module):
     def __init__(
@@ -32,6 +56,7 @@ class TimeSeriesTransformer(nn.Module):
         self.classification_layer = nn.Linear(d_model, num_classes)
         
         self.batch_first = True
+
     def forward(self, x):
         batch_size, seq_len, window_size, channels = x.shape
         flatten_x = x.view(batch_size, seq_len, window_size * channels)
@@ -42,3 +67,4 @@ class TimeSeriesTransformer(nn.Module):
         pooled_output = output.mean(dim=1)  # (batch_size, d_model)
         x = self.classification_layer(pooled_output) # [batch_size, num_classes]
         return x
+
